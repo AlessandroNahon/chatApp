@@ -18,17 +18,14 @@ app.get('/', function(req,res){
 	res.sendFile(__dirname + '/index.html');
 });
 
+client.on('connect', function(){
+	console.log('connected to redis...');
+});
+
 io.on('connection', function(socket){
 	//Connect
 	connections.push(socket);
 	console.log('Connected: %s sockets connected', connections.length);
-
-	client.set('message1', 'hello, yes this is dog');
-	client.set('message2', 'no this is spider');
-
-	client.get('message1', function(err, reply){
-		console.log(reply);
-	});
 
 	//Disconnect
 	socket.on('disconnect', function(data){
@@ -44,10 +41,34 @@ io.on('connection', function(socket){
 
 	//Send Message
 	socket.on('send message', function(data){
-		io.emit('new message', {
-			msg: data,
-			user: socket.username
-		});
+
+		function storeMessage(name, msg) {
+			var message = JSON.stringify({
+				name: socket.username, 
+				msg: data
+			});
+
+			messages.push(message);
+			if(messages.length > 10) {
+				messages.shift();
+			}
+
+			client.lpush("messages", message, function(err, response) {
+			   client.lrange('messages',0, 0, function(err,messages){
+			   messages = messages.reverse();
+
+			   	messages.forEach(function(message){
+			   		message = JSON.parse(message);
+			   		console.log('message:', message);
+			   		io.emit('new message', {
+			   			msg: message.msg,
+			   			user: message.name
+			   		});
+			   	});
+			   });
+			});
+		}
+
 		storeMessage();
 	});
 
@@ -61,18 +82,6 @@ io.on('connection', function(socket){
 
 	function updateUsernames() {
 		io.emit('get users', users);
-	}
-
-	function storeMessage(name, data) {
-		var message = JSON.stringify({
-			name: socket.username, 
-			data: data
-		});
-
-		console.log('message.name:', message.name);
-		// client.lpush('messages', message, function(err,response){
-		// 	client.ltrim('messages', 0, 9);
-		// });
 	}
 
 });
